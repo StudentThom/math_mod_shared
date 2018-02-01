@@ -4,33 +4,34 @@
 library(docstring)
 library(tictoc)
 
-#functions
+# functions
 
 mixture_density <- function(x, pi_0, pi_1, alpha, beta){
   
-  #' Denisty of a mixture distribution
+  #' Density of a mixture distribution
   #'
   #' Gives density of a mixture uniform with one beta(alpha,beta) distribution
   #' 
-  #' @param x vector over which density is calculated, usually on interval (0,1)
+  #' @param x vector over which density is calculated on interval [0,1]
   #' @param pi vector of length two with weight of uniform and beta distribution
-
+  
   pi_0 * dunif(x) + pi_1 * dbeta(x,alpha,beta)
 }
 
 expected_resp <- function(x, pi_vector, j, alpha, beta){
- 
+  
   #' Expected responsibility W_(i,j) for component j
   #'
   #' Gives for a component j at each data point x_i the component\'s relative
   #' probability such that sum_{j=1}^{k} = 1 for all i
   #'
   #' @param x vector of data
-  #' @param pi_vector vector with pi_{j}\'s which give for each j^th component the mixture distribution its weight
+  #' @param pi_vector vector with pi_{j}\'s which give for each j^th component the mixture distribution its
+  #' weight
   #' @param j component number
   #' @param alpha vector with alpha_1,..,alpha_j,..alpha_k 
   #' @param beta vector with beta_1,..,beta_j,..beta_k 
-
+  
   sum = 0
   w_i_j = 0
   length_vect = length(pi_vector)
@@ -39,22 +40,22 @@ expected_resp <- function(x, pi_vector, j, alpha, beta){
   }
   w_i_j = (pi_vector[j] * dbeta(x, alpha[j], beta[j])) / sum
   
-  # return
   return(w_i_j)
 }
 
 averaged_resp_weights <- function(data, pi_vector, alpha, beta) {
-
+  
   #' Averaged responsibility weights
   #'
-  #' Calculates avergaed responsibility weights of W_{i,j} to make new estimation for \\pi_{j}\'s
-  #' Calculates new alpha_{j}\'s and beta_{j}\'s based on MLE estimation
+  #' Calculates averaged responsibility weights of W_{i,j} to make new estimation for \\pi_{j}\'s
+  #' Calculates new alpha_{j}\'s and beta_{j}\'s based on MLE
   #'
   #' @param data vector of data
-  #' @param pi_vector vector with \\pi_{j}\'s which give for each j^th component the mixture distribution its weight
+  #' @param pi_vector vector with \\pi_{j}\'s which give for each j^th component the mixture distribution its
+  #' weight
   #' @param alpha vector with alpha_1,..,alpha_j,..alpha_k 
   #' @param beta vector with beta_1,..,beta_j,..beta_k 
-
+  
   pi_new_vector = 0
   for (j in 1:length(pi_vector)){
     sum = 0
@@ -65,10 +66,11 @@ averaged_resp_weights <- function(data, pi_vector, alpha, beta) {
     average = sum / length(data)
     pi_new_vector[j] = average
     
-    # make MLE estiamtion for alpha and beta if distribution is not the first one (i.e. uniform)
+    # make MLE estimation for alpha and beta if distribution is not the first one (i.e. uniform)
     if (j != 1){
       tic("alpha_beta_mle")
-      out <- optim(c(alpha[j],beta[j]),expectation_f,lower=c(0.1,0.1),method="L-BFGS-B",data=allp$p1,pi_vector=pi_vector,j=j, alphas=alpha,betas=beta,control=list(fnscale = -1))
+      out <- optim(c(alpha[j],beta[j]),expectation_f,lower=c(0.1,0.1),method="L-BFGS-B",data=allp$p1,pi_vector=
+                     pi_vector,j=j, alphas=alpha,betas=beta,control=list(fnscale = -1))
       par <- out$par
       alpha[j] = par[[1]]
       beta[j] = par[[2]]
@@ -80,17 +82,20 @@ averaged_resp_weights <- function(data, pi_vector, alpha, beta) {
 }
 
 expectation_f <- function(alpha_beta,data, pi_vector, j, alphas, betas){
-
+  
   #' Likelihood of expectation of f
   #'
-  #' Function returns likelihood of single beta distibution with parameters alpha_beta where likelihood is based on other beta distributions in mixture distribution with parameters in alphas and betas
+  #' Function returns likelihood of single beta distibution with parameters alpha_beta where likelihood is 
+  #' based on other beta distributions in mixture distribution with parameters in alphas and betas
   #'
   #' @param alpha_beta vector with alpha_{j} and beta_{j} of f_{j}
   #' @param data vector of data
-  #' @param pi_vector vector with \\pi_{j}\'s which give for each j^th component the mixture distribution its weight
+  #' @param pi_vector vector with \\pi_{j}\'s which give for each j^th component the mixture distribution 
+  #' its weight
   #' @param alpha vector with alpha_1,..,alpha_j,..alpha_k 
   #' @param beta vector with beta_1,..,beta_j,..beta_k 
   #'
+
   alpha = alpha_beta[1]
   beta = alpha_beta[2]
   sum = 0
@@ -99,46 +104,90 @@ expectation_f <- function(alpha_beta,data, pi_vector, j, alphas, betas){
     exp_resp <- (expected_resp(data[i], pi_vector, j, alphas, betas))
     sum = sum + (log(dbeta(data[i],alpha,beta)) * exp_resp)
   }
-  # return
   sum
+}
+
+likelihood_f <- function(data, pi_vector, alphas, betas){
+  product <- 1
+  for (i in 1:length(data)){
+    sum <- 0
+    for (j in 1:length(pi_vector)){
+      sum <- (sum + (pi_vector[j] * dbeta(data[i],alphas[j],betas[j])))
+    }   
+    product <- (product * sum)
+  }
+  return(product)
+}
+
+log_likelihood_f <- function(data, pi_vector, alphas, betas){
+  sum_total <- 0
+  for (i in 1:length(data)){
+    sum_distr <- 0
+    for (j in 1:length(pi_vector)){
+      sum_distr <- (sum_distr + (pi_vector[j] * dbeta(data[i],alphas[j],betas[j])))
+    }   
+    sum_total <- (sum_total + log(sum_distr))
+  }
+  return(sum_total)
 }
 
 em_algo <- function(data,pi_vector,alpha,beta, number_of_iterations){
   
   #' Execute EM algorith
   #'
-  #' Give initial data the EM algorith is executed by for a number_of_iterations running the Expectation and the Maximalisation step
+  #' Give initial data the EM algorithm is executed by for a number_of_iterations running the Expectation and
+  #' the Maximalisation step
   #'
   #' @param data vector of data
-  #' @param pi_vector vector with \\pi_{j}\'s which give for each j^th component the mixture distribution its weight
+  #' @param pi_vector vector with \\pi_{j}\'s which give for each j^th component the mixture distribution 
+  #' its weight
   #' @param alpha vector with alpha_1,..,alpha_j,..alpha_k 
   #' @param beta vector with beta_1,..,beta_j,..beta_k 
   #' @param number_of_iterations number of times the E and M step have to be executed
   #'
-  #' TO DO?!: replace number_of_titerations criteria with convergence criteria
-  #'
-
-  for (n in 1:number_of_iterations){
+  
+  pi_vector_archive = matrix(0,number_of_iterations+1,length(pi_vector))
+  alpha_archive = matrix(0,number_of_iterations+1,length(alpha))
+  beta_archive = matrix(0,number_of_iterations+1,length(beta))
+  log_lik <- seq(0,0,length=number_of_iterations+1) 
+  
+  # save initial parameters as well
+  log_lik[1] <- log_likelihood_f(data,pi_vector,alpha,beta)
+  pi_vector_archive[1,1:length(pi_vector)] = pi_vector
+  alpha_archive[1,1:length(alpha)] = alpha
+  beta_archive[1,1:length(beta)] = beta
+  
+  for (n in 2:(number_of_iterations+1)){
+    print(n)
     lijst = averaged_resp_weights(data, pi_vector, alpha, beta)
     pi_vector = lijst[[1]]
     alpha = lijst[[2]]
     beta = lijst[[3]]
+    
+    # look at the likelihood
+    log_lik[n] <- log_likelihood_f(data,pi_vector,alpha,beta)
+    
+    # keep track of parameters during the process
+    pi_vector_archive[n,1:length(pi_vector)] = pi_vector
+    alpha_archive[n,1:length(alpha)] = alpha
+    beta_archive[n,1:length(beta)] = beta
   }
-  list(pi_vector, alpha, beta)
+  list(pi_vector, alpha, beta, pi_vector_archive, alpha_archive, beta_archive, log_lik)
 }
 
-plot_distribution <- function(data, pi_vector, alpha, beta, main){
-
+plot_distribution <- function(data, pi_vector, alpha, beta, main="Fit"){
+  
   #' Plot mixture distribution
   #'
-  #' Plot histogram of data together with plot of mixture density in order to visually obtain whether found distribution fits data
+  #' Plot histogram of data together with plot of mixture density in order to visually obtain whether found 
+  #' distribution fits data
   #'
   #' @param data vector of data
-  #' @param pi_vector vector with \\pi_{j}\'s which give for each j^th component the mixture distribution its weight
+  #' @param pi_vector vector with \\pi_{j}\'s which give for each j^th component the mixture distribution its
+  #' weight
   #' @param alpha vector with alpha_1,..,alpha_j,..alpha_k 
-  #' @param beta vector with beta_1,..,beta_j,..beta_k 
- 
-
+  #' @param beta vector with beta_1,..,beta_j,..beta_k
+  
   hist(data,freq=FALSE,main=main)
   x <- seq(0,1,0.01)
   y <- vector(mode="numeric", length=length(x))
@@ -159,4 +208,3 @@ print_results <- function(alpha,beta,pi_vector,start_time,alpha_new,beta_new,pi_
   }
   print(end_time - start_time)
 }
-
